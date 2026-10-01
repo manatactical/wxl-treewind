@@ -1,6 +1,3 @@
-<p align="center">
-  <img src="store/cover.png" alt="wxl-treewind" width="640">
-</p>
 
 # wxl-treewind
 
