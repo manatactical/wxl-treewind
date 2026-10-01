@@ -3,7 +3,7 @@
 
   "extension": {
     "id": "wxl-treewind",
-    "version": "1.0.0",
+    "version": "1.1.0",
     "abi": "1.1",
     "entry": "wxl-treewind.dll",
     "assets": ["wxl-treewind.ini"],

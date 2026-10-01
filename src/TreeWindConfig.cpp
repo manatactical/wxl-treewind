@@ -80,6 +80,7 @@ namespace wxl::features::treewind
         const FilterFloat kFilterFloats[] = {
             {"MinHeight", &FilterSettings::minHeight, 0.0f, 40.0f},
             {"MinAspect", &FilterSettings::minAspect, 0.5f, 6.0f},
+            {"MaxHeight", &FilterSettings::maxHeight, 0.0f, 200.0f},
             {"MaxDistance", &FilterSettings::maxDistance, 0.0f, 500.0f},
         };
 

@@ -169,18 +169,40 @@ namespace wxl::features::treewind
 
         // A placed model reads as a tree when its local bounds are tall relative to their widest
         // horizontal extent. Uses the MD20 bounding box (model-local, Z up).
-        bool LooksTallThin(const m2off::M2Model* mdl)
+        bool LocalExtents(const m2off::M2Model* mdl, float& ex, float& ey, float& ez)
         {
             if (!mdl || !mdl->header) return false;
             const auto* h = static_cast<const ddoff::MD20Header*>(mdl->header);
-            const float ex = h->bboxMax[0] - h->bboxMin[0];
-            const float ey = h->bboxMax[1] - h->bboxMin[1];
-            const float ez = h->bboxMax[2] - h->bboxMin[2];
-            if (!(ex == ex) || !(ey == ey) || !(ez == ez)) return false; // NaN
+            ex = h->bboxMax[0] - h->bboxMin[0];
+            ey = h->bboxMax[1] - h->bboxMin[1];
+            ez = h->bboxMax[2] - h->bboxMin[2];
+            return ex == ex && ey == ey && ez == ez; // reject NaN extents
+        }
+
+        bool LooksTallThin(const m2off::M2Model* mdl)
+        {
+            float ex = 0.0f, ey = 0.0f, ez = 0.0f;
+            if (!LocalExtents(mdl, ex, ey, ez)) return false;
             if (ez < g_filter.minHeight) return false;
             const float horiz = ex > ey ? ex : ey;
             if (horiz < 0.01f) return true;
             return (ez / horiz) >= g_filter.minAspect;
+        }
+
+        // The largest of the placement matrix's three basis-vector lengths, i.e. the model's world
+        // scale. Used to turn a model-local height into the height the player actually sees.
+        float MaxAxisScale(const float* placement)
+        {
+            float scale = 0.0f;
+            for (int r = 0; r < 3; ++r)
+            {
+                const float x = placement[r * 4 + 0];
+                const float y = placement[r * 4 + 1];
+                const float z = placement[r * 4 + 2];
+                const float len = std::sqrt(x * x + y * y + z * z);
+                if (len > scale) scale = len;
+            }
+            return scale;
         }
 
         // Deterministic 0..1 hash of a world position, so neighbouring trees get independent phase and
@@ -234,12 +256,28 @@ namespace wxl::features::treewind
             auto* mdl = reinterpret_cast<m2off::M2Model*>(modelPtr);
             if (!mdl->header) return; // still loading / not parsed
 
-            bool tree = false;
-            if (g_filter.matchKeywords) tree = MatchesTreeKeyword(mdl->pathStem);
-            if (!tree && g_filter.matchTallThin) tree = LooksTallThin(mdl);
+            // Every enabled gate must pass. The name test is what keeps keyword-less tall shapes
+            // (rock spires, ruins, totems) out; the shape test trims wide, flat or tiny models that
+            // merely happen to sit on a tree-like path.
+            bool tree = g_filter.matchKeywords || g_filter.matchTallThin;
+            if (g_filter.matchKeywords && !MatchesTreeKeyword(mdl->pathStem)) tree = false;
+            if (tree && g_filter.matchTallThin && !LooksTallThin(mdl)) tree = false;
             if (!tree) return;
 
             float* placement = PlacementOf(instance);
+
+            // Reject oversized trees outright so a giant world-tree model keeps its stock pose
+            // instead of leaning its whole canopy across the zone. Height is model-local times the
+            // placement's world scale, i.e. the height the player sees.
+            if (g_filter.maxHeight > 0.0f)
+            {
+                float ex = 0.0f, ey = 0.0f, ez = 0.0f;
+                if (LocalExtents(mdl, ex, ey, ez))
+                {
+                    const float worldHeight = ez * MaxAxisScale(placement);
+                    if (worldHeight > g_filter.maxHeight) return;
+                }
+            }
             const float px = placement[12];
             const float py = placement[13];
             const float pz = placement[14];
@@ -398,8 +436,10 @@ namespace wxl::features::treewind
             if (api.UiCheckbox("Match foliage names", &keywords)) g_filter.matchKeywords = keywords != 0;
             int tallThin = g_filter.matchTallThin ? 1 : 0;
             if (api.UiCheckbox("Match tall models", &tallThin)) g_filter.matchTallThin = tallThin != 0;
+            api.UiText("All enabled tests must pass (AND).");
             api.UiSliderFloat("Min height (yd)", &g_filter.minHeight, 0.0f, 40.0f);
             api.UiSliderFloat("Min aspect", &g_filter.minAspect, 0.5f, 6.0f);
+            api.UiSliderFloat("Max height (yd, 0 = off)", &g_filter.maxHeight, 0.0f, 200.0f);
             api.UiSliderFloat("Max distance (yd)", &g_filter.maxDistance, 0.0f, 500.0f);
         }
 

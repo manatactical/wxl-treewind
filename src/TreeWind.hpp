@@ -41,14 +41,16 @@ namespace wxl::features::treewind
         float distanceFade      = 0.00f;  // per-yard sway attenuation, 0 disables
     };
 
-    /// Filter row: which placed models count as a tree.
+    /// Filter row: which placed models count as a tree. Every enabled gate must pass (AND), so a
+    /// keyword-less tall rock spire is rejected by the name test even though its bounds are tree-like.
     struct FilterSettings
     {
         bool  doodadsOnly   = true;  // only map-placed static doodads (never units, weapons, spell FX)
         bool  matchKeywords = true;  // model path contains a foliage keyword (tree/pine/canopy/...)
-        bool  matchTallThin = true;  // model bounds are tall and narrow enough to read as a tree
+        bool  matchTallThin = false; // model bounds are tall and narrow enough to read as a tree
         float minHeight     = 8.0f;  // tall-thin gate: minimum model-local height, yards
         float minAspect     = 1.80f; // tall-thin gate: height / widest horizontal extent
+        float maxHeight     = 125.0f; // skip trees taller than this, world yards (0 = unlimited)
         float maxDistance   = 0.0f;  // ignore trees farther than this, yards (0 = unlimited)
     };
 
