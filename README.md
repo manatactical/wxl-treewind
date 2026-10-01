@@ -4,7 +4,7 @@
 Makes the trees move.
 
 Placed trees in the stock 3.3.5a client are completely rigid -- they never react to anything. This
-module gives them the same bit of life the [grass module](../wxl-grasswind) gives ground cover:
+module gives them the same bit of life the grass wind module gives ground cover:
 
 - they sway gently in the wind, leaning downwind and drifting back;
 - nearby trees share a travelling wind field, so a breeze visibly crosses a forest;
