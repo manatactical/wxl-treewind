@@ -1,0 +1,35 @@
+{
+  "manifest": 1,
+
+  "extension": {
+    "id": "wxl-treewind",
+    "version": "1.0.0",
+    "abi": "1.1",
+    "entry": "wxl-treewind.dll",
+    "assets": [],
+    "requires": {},
+    "conflicts": [],
+
+    "hooks": [
+      { "target": "M2.BuildBonePalette" },
+      { "target": "M2.BuildBonePaletteSimple" }
+    ]
+  },
+
+  "deploy": {
+    "mode": "release",
+    "match": "*.dll"
+  },
+
+  "listing": {
+    "title": "Tree Wind",
+    "tagline": "Makes the client's trees sway gently in the wind.",
+    "description": "store/description.md",
+    "gallery": [],
+    "categories": ["rendering"],
+    "accent": "#4f7a3a"
+  },
+
+  "license": "GPL-3.0-or-later",
+  "signature": null
+}
