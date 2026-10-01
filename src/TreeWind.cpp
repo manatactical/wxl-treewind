@@ -17,6 +17,8 @@
 
 #include "TreeWind.hpp"
 
+#include "TreeWindConfig.hpp"
+
 #include "engine/events/Event.hpp"
 #include "game/Camera.hpp"
 #include "offsets/game/Doodad.hpp"
@@ -220,6 +222,7 @@ namespace wxl::features::treewind
 
         void ApplySway(void* instance)
         {
+            ReloadTreeWindConfigIfChanged(); // a live edit to wxl-treewind.ini lands here
             if (!instance || !g_wind.enabled) return;
 
             char* inst = static_cast<char*>(instance);
@@ -329,6 +332,8 @@ namespace wxl::features::treewind
     {
         if (!wxl_treewind::g_api) return false;
 
+        LoadTreeWindConfig();
+
         if (!g_cacheReady)
         {
             InitializeCriticalSection(&g_cacheLock);
@@ -361,7 +366,7 @@ namespace wxl::features::treewind
     void DrawPanel(const WXL_Api& api)
     {
         if (!api.UiCheckbox || !api.UiSliderFloat || !api.UiSeparator || !api.UiText ||
-            !api.UiCollapsingHeader)
+            !api.UiCollapsingHeader || !api.UiButton || !api.UiSameLine)
             return;
 
         int enabled = g_wind.enabled ? 1 : 0;
@@ -397,5 +402,14 @@ namespace wxl::features::treewind
             api.UiSliderFloat("Min aspect", &g_filter.minAspect, 0.5f, 6.0f);
             api.UiSliderFloat("Max distance (yd)", &g_filter.maxDistance, 0.0f, 500.0f);
         }
+
+        api.UiSeparator();
+        if (api.UiButton("Save to wxl-treewind.ini"))
+            SaveTreeWindConfig();
+        api.UiSameLine();
+        if (api.UiButton("Revert"))
+            RevertTreeWindConfig();
+        api.UiText(TreeWindConfigHasUnsavedChanges() ? "Unsaved changes"
+                                                    : "Matches wxl-treewind.ini (edited live)");
     }
 }

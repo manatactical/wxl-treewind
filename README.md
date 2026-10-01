@@ -32,6 +32,12 @@ The wind row covers direction, speed, amplitude, wavelength, a second cross-swel
 downwind lean, per-tree variance, gust depth and distance fade. The filter row controls what counts as
 a tree (path keywords / tall-and-narrow bounds, minimum height and aspect, maximum distance).
 
+Every knob is also in `wxl-treewind.ini` next to the DLL, so the sway can be retuned from a text
+editor without the overlay. The file is read live: save a change and the module picks it up within
+about a second, no restart. The panel's **Save** button writes the current slider values back to the
+file; **Revert** discards unsaved edits. If the file is missing it is written with the defaults on
+the first load.
+
 ## Notes
 
 - The tree's collision, selection and lighting are unchanged; only the visual transform sways.
