@@ -67,8 +67,8 @@ namespace wxl::features::treewind
     inline WindSettings BushWindDefaults()
     {
         WindSettings w;
-        w.speed             = 3.0f;   // a touch slower than a tree's flutter
-        w.amplitudeDeg      = 0.60f;  // half the previous bush tilt
+        w.speed             = 2.0f;   // a touch slower than a tree's flutter
+        w.amplitudeDeg      = 0.50f;  // half the previous bush tilt
         w.wavelength        = 9.0f;   // smaller, local waves
         w.crossAmplitudeDeg = 0.25f;
         w.crossWavelength   = 5.0f;
