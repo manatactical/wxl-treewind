@@ -92,6 +92,7 @@ namespace wxl::features::treewind
             {"DoodadsOnly", &FilterSettings::doodadsOnly},
             {"MatchKeywords", &FilterSettings::matchKeywords},
             {"MatchTallThin", &FilterSettings::matchTallThin},
+            {"ExcludeDead", &FilterSettings::excludeDead},
         };
 
         std::string        g_path;

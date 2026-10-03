@@ -155,13 +155,35 @@ namespace wxl::features::treewind
 
         bool MatchesTreeKeyword(const char* path)
         {
-            // Deliberately avoids bare "fir" (matches "fire") and keeps to foliage words that appear
-            // in WotLK model paths. Tune via the overlay panel or by extending this list.
+            // Names are matched case-insensitively against the model path stem. Deliberately avoids
+            // bare "fir" (matches "fire") and non-tree props ("bush", "shrub", "trunk",
+            // "leaves") so only a whole tree qualifies. Tune via the overlay panel or by extending
+            // this list.
             static const char* const kKeywords[] = {
                 "tree", "pines", "pine", "spruce", "cedar", "oak", "willow", "birch", "aspen",
-                "palm", "canopy", "leaves", "foliage", "bush", "shrub", "conifer", "trunk",
+                "palm", "canopy", "conifer", "maple", "eucalyptus", "redwood", "cypress",
+                "larch", "juniper", "mangrove", "olive", "baobab", "treant",
             };
             for (const char* k : kKeywords)
+                if (ContainsNoCase(path, k))
+                    return true;
+            return false;
+        }
+
+        // Words that mark a placed model as a dead, bare, burnt or cut-down tree -- or a loose tree
+        // part (stump, snag, log, driftwood). Checked before the live-tree keyword so "DeadTree",
+        // "BurntPine" and "Treestump" cannot sway just because they carry a tree word. Every entry
+        // is a whole word that only appears in dead or felled wood; short/ambiguous tokens ("dry",
+        // "sere") are left out so a living model is never filtered out by accident.
+        bool MatchesDeadKeyword(const char* path)
+        {
+            static const char* const kDeadKeywords[] = {
+                "dead", "deadwood", "burnt", "burned", "charred", "scorch", "wither",
+                "wilted", "blight", "corrupt", "cursed", "bare", "leafless", "defoliated",
+                "skeletal", "petrified", "stump", "snag", "log", "driftwood", "uprooted",
+                "felled", "fallen", "rotten", "hollow",
+            };
+            for (const char* k : kDeadKeywords)
                 if (ContainsNoCase(path, k))
                     return true;
             return false;
@@ -255,6 +277,9 @@ namespace wxl::features::treewind
             if (!modelPtr) return;
             auto* mdl = reinterpret_cast<m2off::M2Model*>(modelPtr);
             if (!mdl->header) return; // still loading / not parsed
+
+            // A dead, bare or felled tree is never wind-swayed, whichever positive gate is enabled.
+            if (g_filter.excludeDead && MatchesDeadKeyword(mdl->pathStem)) return;
 
             // Every enabled gate must pass. The name test is what keeps keyword-less tall shapes
             // (rock spires, ruins, totems) out; the shape test trims wide, flat or tiny models that
@@ -436,6 +461,8 @@ namespace wxl::features::treewind
             if (api.UiCheckbox("Match foliage names", &keywords)) g_filter.matchKeywords = keywords != 0;
             int tallThin = g_filter.matchTallThin ? 1 : 0;
             if (api.UiCheckbox("Match tall models", &tallThin)) g_filter.matchTallThin = tallThin != 0;
+            int excludeDead = g_filter.excludeDead ? 1 : 0;
+            if (api.UiCheckbox("Skip dead / bare trees", &excludeDead)) g_filter.excludeDead = excludeDead != 0;
             api.UiText("All enabled tests must pass (AND).");
             api.UiSliderFloat("Min height (yd)", &g_filter.minHeight, 0.0f, 40.0f);
             api.UiSliderFloat("Min aspect", &g_filter.minAspect, 0.5f, 6.0f);

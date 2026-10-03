@@ -23,17 +23,20 @@ base stays planted and the crown leans -- a whole-tree rigid tilt rather than pe
 kept to a fraction of a degree so it reads as a breeze instead of an earthquake.
 
 Trees are recognised as map-placed static doodads (never units, weapons or spell effects) whose model
-path carries a foliage keyword. By default the foliage name alone decides, so a tall rock spire or
-ruin can never qualify. An optional tall-and-narrow bounds test (off by default) can be enabled as a
-second required gate, and an optional maximum height leaves oversized trees rigid. Every test, and
-every wind knob, is exposed on the in-game overlay panel under **Tree Wind**.
+path carries a live-tree keyword (tree/pine/spruce/...). Dead, bare, burnt and felled trees -- and
+loose tree parts such as stumps, snags and logs -- are rejected by a name test before the tree keyword
+is even considered, so a graveyard or a burnt forest stays rigid. By default the tree name alone
+decides, so a tall rock spire or ruin can never qualify. An optional tall-and-narrow bounds test (off
+by default) can be enabled as a second required gate, and an optional maximum height leaves oversized
+trees rigid. Every test, and every wind knob, is exposed on the in-game overlay panel under **Tree
+Wind**.
 
 ## Tuning
 
 The wind row covers direction, speed, amplitude, wavelength, a second cross-swell, a constant
 downwind lean, per-tree variance, gust depth and distance fade. The filter row controls what counts as
-a tree (path keywords / tall-and-narrow bounds, minimum height and aspect, maximum height and
-distance).
+a tree (dead/bare exclusion, path keywords / tall-and-narrow bounds, minimum height and aspect,
+maximum height and distance).
 
 Every knob is also in `wxl-treewind.ini` next to the DLL, so the sway can be retuned from a text
 editor without the overlay. The file is read live: save a change and the module picks it up within
@@ -44,7 +47,8 @@ the first load.
 ## Notes
 
 - The tree's collision, selection and lighting are unchanged; only the visual transform sways.
-- Every enabled filter must pass. The foliage-name test is the only gate on by default; enable
-  **Match tall models** to also require tree-like bounds, or keep it off if a real tree is missed.
+- Every enabled filter must pass. The tree-name test is the only positive gate on by default, with
+  **Skip dead / bare trees** removing dead, burnt and felled models first; enable **Match tall
+  models** to also require tree-like bounds, or keep it off if a real tree is missed.
 - **Max height** (world yards, default 125, 0 = unlimited) skips trees taller than the value, so giant
   world-tree models keep their stock pose instead of leaning their canopy across the zone.

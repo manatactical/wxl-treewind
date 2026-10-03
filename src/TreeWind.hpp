@@ -46,8 +46,9 @@ namespace wxl::features::treewind
     struct FilterSettings
     {
         bool  doodadsOnly   = true;  // only map-placed static doodads (never units, weapons, spell FX)
-        bool  matchKeywords = true;  // model path contains a foliage keyword (tree/pine/canopy/...)
+        bool  matchKeywords = true;  // model path contains a live-tree keyword (tree/pine/canopy/...)
         bool  matchTallThin = false; // model bounds are tall and narrow enough to read as a tree
+        bool  excludeDead   = true;  // reject dead/bare/burnt/stump models even if a tree word matches
         float minHeight     = 8.0f;  // tall-thin gate: minimum model-local height, yards
         float minAspect     = 1.80f; // tall-thin gate: height / widest horizontal extent
         float maxHeight     = 125.0f; // skip trees taller than this, world yards (0 = unlimited)
