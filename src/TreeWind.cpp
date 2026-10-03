@@ -225,6 +225,46 @@ namespace wxl::features::treewind
             return false;
         }
 
+        // Classifying a model's path is the hot cost of ApplySway, but the answer never changes for a
+        // given model. The palette build runs on the game thread and the animate workers, so each
+        // thread memoizes the models it has seen: the ~47 keyword scans happen once per model instead
+        // of once per instance per frame. The path hash guards against a freed model's address being
+        // reused for a different one.
+        struct PathClass
+        {
+            uint32_t model = 0;
+            uint32_t hash  = 0;
+            bool     tree  = false;
+            bool     dead  = false;
+        };
+        constexpr size_t kPathMemoSize = 256; // power of two
+        thread_local PathClass t_pathMemo[kPathMemoSize];
+
+        uint32_t PathHash(const char* s)
+        {
+            uint32_t h = 2166136261u; // FNV-1a
+            for (int i = 0; s[i] && i < 128; ++i)
+            {
+                h ^= static_cast<uint8_t>(s[i]);
+                h *= 16777619u;
+            }
+            return h;
+        }
+
+        const PathClass& ClassifyPath(uint32_t model, const char* path)
+        {
+            PathClass& slot = t_pathMemo[(model >> 4) & (kPathMemoSize - 1)];
+            const uint32_t hash = PathHash(path);
+            if (slot.model != model || slot.hash != hash)
+            {
+                slot.model = model;
+                slot.hash  = hash;
+                slot.dead  = MatchesDeadKeyword(path);
+                slot.tree  = MatchesTreeKeyword(path);
+            }
+            return slot;
+        }
+
         // A placed model reads as a tree when its local bounds are tall relative to their widest
         // horizontal extent. Uses the MD20 bounding box (model-local, Z up).
         bool LocalExtents(const m2off::M2Model* mdl, float& ex, float& ey, float& ez)
@@ -247,20 +287,20 @@ namespace wxl::features::treewind
             return (ez / horiz) >= g_filter.minAspect;
         }
 
-        // The largest of the placement matrix's three basis-vector lengths, i.e. the model's world
-        // scale. Used to turn a model-local height into the height the player actually sees.
-        float MaxAxisScale(const float* placement)
+        // Largest squared length of the placement's three basis vectors: the model's world scale
+        // squared. Comparing squared heights avoids a sqrt per tree when enforcing the height cap.
+        float MaxAxisScaleSq(const float* placement)
         {
-            float scale = 0.0f;
+            float best = 0.0f;
             for (int r = 0; r < 3; ++r)
             {
                 const float x = placement[r * 4 + 0];
                 const float y = placement[r * 4 + 1];
                 const float z = placement[r * 4 + 2];
-                const float len = std::sqrt(x * x + y * y + z * z);
-                if (len > scale) scale = len;
+                const float len = x * x + y * y + z * z;
+                if (len > best) best = len;
             }
-            return scale;
+            return best;
         }
 
         // Deterministic 0..1 hash of a world position, so neighbouring trees get independent phase and
@@ -300,6 +340,35 @@ namespace wxl::features::treewind
             m[6] = ax * az * ic + ay * s; m[7] = ay * az * ic - ax * s; m[8] = c + az * az * ic;
         }
 
+        // The wind direction trig and wavenumbers depend only on the settings, not on a placement, so
+        // they are computed once per settings change (live edits included) rather than four trig calls
+        // per tree per frame. Per-thread like the path memo, since the animate workers call in too.
+        struct WindBasis
+        {
+            float dirDeg = -1.0f, crossDeg = -1.0f, wl = -1.0f, crossWl = -1.0f;
+            float d1x = 1.0f, d1y = 0.0f, d2x = 1.0f, d2y = 0.0f, k1 = 1.0f, k2 = 1.0f;
+        };
+        thread_local WindBasis t_windBasis;
+
+        const WindBasis& WindBasisFor(const WindSettings& w)
+        {
+            if (t_windBasis.dirDeg != w.directionDeg || t_windBasis.crossDeg != w.crossAngleDeg ||
+                t_windBasis.wl != w.wavelength || t_windBasis.crossWl != w.crossWavelength)
+            {
+                t_windBasis.dirDeg   = w.directionDeg;
+                t_windBasis.crossDeg = w.crossAngleDeg;
+                t_windBasis.wl       = w.wavelength;
+                t_windBasis.crossWl  = w.crossWavelength;
+                const float a1 = w.directionDeg * kDeg2Rad;
+                const float a2 = (w.directionDeg + w.crossAngleDeg) * kDeg2Rad;
+                t_windBasis.k1  = kTwoPi / (w.wavelength > 0.1f ? w.wavelength : 0.1f);
+                t_windBasis.k2  = kTwoPi / (w.crossWavelength > 0.1f ? w.crossWavelength : 0.1f);
+                t_windBasis.d1x = std::cos(a1); t_windBasis.d1y = std::sin(a1);
+                t_windBasis.d2x = std::cos(a2); t_windBasis.d2y = std::sin(a2);
+            }
+            return t_windBasis;
+        }
+
         void ApplySway(void* instance)
         {
             ReloadTreeWindConfigIfChanged(); // a live edit to wxl-treewind.ini lands here
@@ -314,14 +383,18 @@ namespace wxl::features::treewind
             auto* mdl = reinterpret_cast<m2off::M2Model*>(modelPtr);
             if (!mdl->header) return; // still loading / not parsed
 
+            // Name classification is memoized per model: the keyword scans are the hot cost here and
+            // the answer is fixed for a model's lifetime.
+            const PathClass& pc = ClassifyPath(modelPtr, mdl->pathStem);
+
             // A dead, bare or felled tree is never wind-swayed, whichever positive gate is enabled.
-            if (g_filter.excludeDead && MatchesDeadKeyword(mdl->pathStem)) return;
+            if (g_filter.excludeDead && pc.dead) return;
 
             // Every enabled gate must pass. The name test is what keeps keyword-less tall shapes
             // (rock spires, ruins, totems) out; the shape test trims wide, flat or tiny models that
             // merely happen to sit on a tree-like path.
             bool tree = g_filter.matchKeywords || g_filter.matchTallThin;
-            if (g_filter.matchKeywords && !MatchesTreeKeyword(mdl->pathStem)) tree = false;
+            if (g_filter.matchKeywords && !pc.tree) tree = false;
             if (tree && g_filter.matchTallThin && !LooksTallThin(mdl)) tree = false;
             if (!tree) return;
 
@@ -333,10 +406,11 @@ namespace wxl::features::treewind
             if (g_filter.maxHeight > 0.0f)
             {
                 float ex = 0.0f, ey = 0.0f, ez = 0.0f;
-                if (LocalExtents(mdl, ex, ey, ez))
+                if (LocalExtents(mdl, ex, ey, ez) && ez > 0.0f)
                 {
-                    const float worldHeight = ez * MaxAxisScale(placement);
-                    if (worldHeight > g_filter.maxHeight) return;
+                    // worldHeight > cap  <=>  ez^2 * scale^2 > cap^2  (both sides non-negative)
+                    const float cap = g_filter.maxHeight;
+                    if (ez * ez * MaxAxisScaleSq(placement) > cap * cap) return;
                 }
             }
             const float px = placement[12];
@@ -359,12 +433,10 @@ namespace wxl::features::treewind
             const WindSettings& w = g_wind;
             const float t = static_cast<float>(GetTickCount() % 3600000u) * 0.001f;
 
-            const float a1 = w.directionDeg * kDeg2Rad;
-            const float a2 = (w.directionDeg + w.crossAngleDeg) * kDeg2Rad;
-            const float k1 = kTwoPi / (w.wavelength > 0.1f ? w.wavelength : 0.1f);
-            const float k2 = kTwoPi / (w.crossWavelength > 0.1f ? w.crossWavelength : 0.1f);
-            const float d1x = std::cos(a1), d1y = std::sin(a1);
-            const float d2x = std::cos(a2), d2y = std::sin(a2);
+            const WindBasis& wb = WindBasisFor(w);
+            const float k1 = wb.k1, k2 = wb.k2;
+            const float d1x = wb.d1x, d1y = wb.d1y;
+            const float d2x = wb.d2x, d2y = wb.d2y;
 
             const float seed = Hash01(px, py) * kTwoPi;
             float var = w.variance;
