@@ -61,17 +61,18 @@ namespace wxl::features::treewind
     /// name only -- they never pass through the tree tall-thin or max-height gates -- and carry their
     /// own wind so they can sway harder and faster than trees without loosening the tree filter.
 
-    /// Sway defaults for bushes: shorter, quicker and a bit stronger than the trees, so low foliage
-    /// flutters rather than leaning like a trunk. Shares the wind field shape with WindSettings.
+    /// Sway defaults for bushes: shorter and quicker than the trees, but still gentle -- the tilt is
+    /// kept well below a tree's crown so low foliage only flutters. Shares the wind field shape with
+    /// WindSettings.
     inline WindSettings BushWindDefaults()
     {
         WindSettings w;
-        w.speed             = 4.0f;   // quicker flutter
-        w.amplitudeDeg      = 1.20f;  // more than a tree's crown
+        w.speed             = 3.0f;   // a touch slower than a tree's flutter
+        w.amplitudeDeg      = 0.60f;  // half the previous bush tilt
         w.wavelength        = 9.0f;   // smaller, local waves
-        w.crossAmplitudeDeg = 0.50f;
+        w.crossAmplitudeDeg = 0.25f;
         w.crossWavelength   = 5.0f;
-        w.leanDeg           = 0.40f;
+        w.leanDeg           = 0.20f;
         w.variance          = 0.60f;
         w.gust              = 0.40f;
         return w;

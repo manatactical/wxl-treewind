@@ -33,9 +33,9 @@ Wind**.
 
 Bushes (bush/shrub/fern/hedge/...) are handled as a separate row. They are short and wide, so they
 would fail the tree size gate by design; instead they are matched by name only and never pass through
-the tall-thin or maximum-height filter. They carry their own wind settings, so low foliage can flutter
-faster and harder than the trees without loosening the tree filter. Bushes have their own **Bushes**
-panel and `[Bush]` section.
+the tall-thin or maximum-height filter. They carry their own wind settings (gentler than the trees by
+default), so low foliage can be tuned independently without loosening the tree filter. Bushes have
+their own **Bushes** panel and `[Bush]` section.
 
 ## Tuning
 
