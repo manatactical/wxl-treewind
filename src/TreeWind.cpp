@@ -113,12 +113,7 @@ namespace wxl::features::treewind
                 BaseEntry& e = g_cache[idx];
                 if (e.instance == instance)
                 {
-                    // A reused slot with new content: re-seed from the live placement. The model
-                    // pointer catches a model swap and the translation catches a new tree at the
-                    // same address -- the sway never touches the translation row, so a match there
-                    // means this really is the same, untouched placement.
-                    if (e.model != model ||
-                        cur[12] != e.base[12] || cur[13] != e.base[13] || cur[14] != e.base[14])
+                    if (e.model != model) // a reused slot with a new model: re-seed the base
                     {
                         e.model = model;
                         std::memcpy(e.base, cur, sizeof(e.base));
