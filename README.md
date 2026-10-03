@@ -50,5 +50,5 @@ the first load.
 - Every enabled filter must pass. The tree-name test is the only positive gate on by default, with
   **Skip dead / bare trees** removing dead, burnt and felled models first; enable **Match tall
   models** to also require tree-like bounds, or keep it off if a real tree is missed.
-- **Max height** (world yards, default 125, 0 = unlimited) skips trees taller than the value, so giant
+- **Max height** (world yards, default 200, 0 = unlimited) skips trees taller than the value, so giant
   world-tree models keep their stock pose instead of leaning their canopy across the zone.

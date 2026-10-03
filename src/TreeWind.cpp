@@ -502,7 +502,7 @@ namespace wxl::features::treewind
             api.UiText("All enabled tests must pass (AND).");
             api.UiSliderFloat("Min height (yd)", &g_filter.minHeight, 0.0f, 40.0f);
             api.UiSliderFloat("Min aspect", &g_filter.minAspect, 0.5f, 6.0f);
-            api.UiSliderFloat("Max height (yd, 0 = off)", &g_filter.maxHeight, 0.0f, 200.0f);
+            api.UiSliderFloat("Max height (yd, 0 = off)", &g_filter.maxHeight, 0.0f, 300.0f);
             api.UiSliderFloat("Max distance (yd)", &g_filter.maxDistance, 0.0f, 500.0f);
         }
 
