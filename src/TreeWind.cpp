@@ -48,6 +48,7 @@ namespace wxl::features::treewind
 
         WindSettings   g_wind;
         FilterSettings g_filter;
+        BushSettings   g_bush;
         bool           g_installed = false;
 
         m2off::M2_BuildBonePaletteFn g_origFull   = nullptr;
@@ -193,12 +194,28 @@ namespace wxl::features::treewind
         {
             // Names are matched case-insensitively against the model path stem. Deliberately avoids
             // bare "fir" (matches "fire") and non-tree props ("bush", "shrub", "trunk",
-            // "leaves") so only a whole tree qualifies. Tune via the overlay panel or by extending
-            // this list.
+            // "leaves") so only a whole tree qualifies. Bushes are claimed by their own keyword row
+            // (see MatchesBushKeyword), not this one. Tune via the overlay panel or by extending this
+            // list.
             static const char* const kKeywords[] = {
                 "tree", "pines", "pine", "spruce", "cedar", "oak", "willow", "birch", "aspen",
                 "palm", "canopy", "conifer", "maple", "eucalyptus", "redwood", "cypress",
                 "larch", "juniper", "mangrove", "olive", "baobab", "treant",
+            };
+            for (const char* k : kKeywords)
+                if (ContainsNoCase(path, k))
+                    return true;
+            return false;
+        }
+
+        // Low, wide foliage that the tree row's size gate exists to reject. Bushes are matched by name
+        // only and never run through LooksTallThin/maxHeight, so a bush keeps swaying even though its
+        // bounds are nothing like a tree's.
+        bool MatchesBushKeyword(const char* path)
+        {
+            static const char* const kKeywords[] = {
+                "bush", "shrub", "fern", "hedge", "thicket", "bramble", "undergrowth",
+                "topiary", "bracken", "sapling",
             };
             for (const char* k : kKeywords)
                 if (ContainsNoCase(path, k))
@@ -235,6 +252,7 @@ namespace wxl::features::treewind
             uint32_t model = 0;
             uint32_t hash  = 0;
             bool     tree  = false;
+            bool     bush  = false;
             bool     dead  = false;
         };
         constexpr size_t kPathMemoSize = 256; // power of two
@@ -260,6 +278,7 @@ namespace wxl::features::treewind
                 slot.model = model;
                 slot.hash  = hash;
                 slot.dead  = MatchesDeadKeyword(path);
+                slot.bush  = MatchesBushKeyword(path);
                 slot.tree  = MatchesTreeKeyword(path);
             }
             return slot;
@@ -342,41 +361,43 @@ namespace wxl::features::treewind
 
         // The wind direction trig and wavenumbers depend only on the settings, not on a placement, so
         // they are computed once per settings change (live edits included) rather than four trig calls
-        // per tree per frame. Per-thread like the path memo, since the animate workers call in too.
+        // per model per frame. Per-thread like the path memo, since the animate workers call in too.
+        // Trees and bushes keep separate caches so alternating between them does not invalidate the
+        // basis on every call.
         struct WindBasis
         {
             float dirDeg = -1.0f, crossDeg = -1.0f, wl = -1.0f, crossWl = -1.0f;
             float d1x = 1.0f, d1y = 0.0f, d2x = 1.0f, d2y = 0.0f, k1 = 1.0f, k2 = 1.0f;
         };
-        thread_local WindBasis t_windBasis;
+        thread_local WindBasis t_windBasis; // the tree row's cached basis
+        thread_local WindBasis t_bushBasis; // the bush row's cached basis
 
-        const WindBasis& WindBasisFor(const WindSettings& w)
+        const WindBasis& WindBasisFor(WindBasis& cache, const WindSettings& w)
         {
-            if (t_windBasis.dirDeg != w.directionDeg || t_windBasis.crossDeg != w.crossAngleDeg ||
-                t_windBasis.wl != w.wavelength || t_windBasis.crossWl != w.crossWavelength)
+            if (cache.dirDeg != w.directionDeg || cache.crossDeg != w.crossAngleDeg ||
+                cache.wl != w.wavelength || cache.crossWl != w.crossWavelength)
             {
-                t_windBasis.dirDeg   = w.directionDeg;
-                t_windBasis.crossDeg = w.crossAngleDeg;
-                t_windBasis.wl       = w.wavelength;
-                t_windBasis.crossWl  = w.crossWavelength;
+                cache.dirDeg   = w.directionDeg;
+                cache.crossDeg = w.crossAngleDeg;
+                cache.wl       = w.wavelength;
+                cache.crossWl  = w.crossWavelength;
                 const float a1 = w.directionDeg * kDeg2Rad;
                 const float a2 = (w.directionDeg + w.crossAngleDeg) * kDeg2Rad;
-                t_windBasis.k1  = kTwoPi / (w.wavelength > 0.1f ? w.wavelength : 0.1f);
-                t_windBasis.k2  = kTwoPi / (w.crossWavelength > 0.1f ? w.crossWavelength : 0.1f);
-                t_windBasis.d1x = std::cos(a1); t_windBasis.d1y = std::sin(a1);
-                t_windBasis.d2x = std::cos(a2); t_windBasis.d2y = std::sin(a2);
+                cache.k1  = kTwoPi / (w.wavelength > 0.1f ? w.wavelength : 0.1f);
+                cache.k2  = kTwoPi / (w.crossWavelength > 0.1f ? w.crossWavelength : 0.1f);
+                cache.d1x = std::cos(a1); cache.d1y = std::sin(a1);
+                cache.d2x = std::cos(a2); cache.d2y = std::sin(a2);
             }
-            return t_windBasis;
+            return cache;
         }
 
         void ApplySway(void* instance)
         {
             ReloadTreeWindConfigIfChanged(); // a live edit to wxl-treewind.ini lands here
-            if (!instance || !g_wind.enabled) return;
+            if (!instance) return;
 
             char* inst = static_cast<char*>(instance);
             const uint32_t ownerFlags = *reinterpret_cast<uint32_t*>(inst + m2off::kOffInstOwnerFlags);
-            if (g_filter.doodadsOnly && (ownerFlags & kDoodadOwnerFlag) == 0) return;
 
             const uint32_t modelPtr = *reinterpret_cast<uint32_t*>(inst + m2off::kOffInstModel);
             if (!modelPtr) return;
@@ -387,23 +408,41 @@ namespace wxl::features::treewind
             // the answer is fixed for a model's lifetime.
             const PathClass& pc = ClassifyPath(modelPtr, mdl->pathStem);
 
-            // A dead, bare or felled tree is never wind-swayed, whichever positive gate is enabled.
-            if (g_filter.excludeDead && pc.dead) return;
+            // Pick the row that owns this model. A bush is claimed by name alone and is deliberately
+            // exempt from the tree row's shape/size gates: it is short and wide, so LooksTallThin and
+            // maxHeight exist precisely to reject it. If bush sway is switched off a bush-named model
+            // falls through to the tree test, so one named for both can still sway as a tree.
+            const bool isBush = pc.bush && g_bush.wind.enabled;
+            const WindSettings& w = isBush ? g_bush.wind : g_wind;
+            if (!w.enabled) return;
 
-            // Every enabled gate must pass. The name test is what keeps keyword-less tall shapes
-            // (rock spires, ruins, totems) out; the shape test trims wide, flat or tiny models that
-            // merely happen to sit on a tree-like path.
-            bool tree = g_filter.matchKeywords || g_filter.matchTallThin;
-            if (g_filter.matchKeywords && !pc.tree) tree = false;
-            if (tree && g_filter.matchTallThin && !LooksTallThin(mdl)) tree = false;
-            if (!tree) return;
+            bool sway = false;
+            if (isBush)
+            {
+                if (g_bush.doodadsOnly && (ownerFlags & kDoodadOwnerFlag) == 0) return;
+                if (g_bush.excludeDead && pc.dead) return;
+                sway = true; // name is the only gate; no shape or size test on purpose
+            }
+            else
+            {
+                if (g_filter.doodadsOnly && (ownerFlags & kDoodadOwnerFlag) == 0) return;
+                if (g_filter.excludeDead && pc.dead) return;
+
+                // Every enabled gate must pass. The name test is what keeps keyword-less tall shapes
+                // (rock spires, ruins, totems) out; the shape test trims wide, flat or tiny models
+                // that merely happen to sit on a tree-like path.
+                sway = g_filter.matchKeywords || g_filter.matchTallThin;
+                if (g_filter.matchKeywords && !pc.tree) sway = false;
+                if (sway && g_filter.matchTallThin && !LooksTallThin(mdl)) sway = false;
+            }
+            if (!sway) return;
 
             float* placement = PlacementOf(instance);
 
             // Reject oversized trees outright so a giant world-tree model keeps its stock pose
-            // instead of leaning its whole canopy across the zone. Height is model-local times the
-            // placement's world scale, i.e. the height the player sees.
-            if (g_filter.maxHeight > 0.0f)
+            // instead of leaning its whole canopy across the zone. Bushes never reach this test; they
+            // are short by definition and have no height cap.
+            if (!isBush && g_filter.maxHeight > 0.0f)
             {
                 float ex = 0.0f, ey = 0.0f, ez = 0.0f;
                 if (LocalExtents(mdl, ex, ey, ez) && ez > 0.0f)
@@ -423,17 +462,17 @@ namespace wxl::features::treewind
             const float ddy = py - camPos[1];
             const float ddz = pz - camPos[2];
             const float dist2 = ddx * ddx + ddy * ddy + ddz * ddz;
-            if (g_filter.maxDistance > 0.0f && dist2 > g_filter.maxDistance * g_filter.maxDistance)
+            const float maxDistance = isBush ? g_bush.maxDistance : g_filter.maxDistance;
+            if (maxDistance > 0.0f && dist2 > maxDistance * maxDistance)
                 return;
 
             float base[12];
             if (!BaseFromCache(instance, modelPtr, base))
-                return; // table contended; leave the tree stock this frame
+                return; // table contended; leave the model stock this frame
 
-            const WindSettings& w = g_wind;
             const float t = static_cast<float>(GetTickCount() % 3600000u) * 0.001f;
 
-            const WindBasis& wb = WindBasisFor(w);
+            const WindBasis& wb = WindBasisFor(isBush ? t_bushBasis : t_windBasis, w);
             const float k1 = wb.k1, k2 = wb.k2;
             const float d1x = wb.d1x, d1y = wb.d1y;
             const float d2x = wb.d2x, d2y = wb.d2y;
@@ -497,6 +536,7 @@ namespace wxl::features::treewind
 
     WindSettings&   Wind()    { return g_wind; }
     FilterSettings& Filter()  { return g_filter; }
+    BushSettings&   Bush()    { return g_bush; }
     bool            Installed() { return g_installed; }
 
     bool InstallTreeWind()
@@ -576,6 +616,31 @@ namespace wxl::features::treewind
             api.UiSliderFloat("Min aspect", &g_filter.minAspect, 0.5f, 6.0f);
             api.UiSliderFloat("Max height (yd, 0 = off)", &g_filter.maxHeight, 0.0f, 300.0f);
             api.UiSliderFloat("Max distance (yd)", &g_filter.maxDistance, 0.0f, 500.0f);
+        }
+
+        // Bushes are their own row: matched by name only, so the tree size / tall-thin gates above
+        // never apply, and with an independent set of wind sliders.
+        if (api.UiCollapsingHeader("Bushes"))
+        {
+            int bushEnabled = g_bush.wind.enabled ? 1 : 0;
+            if (api.UiCheckbox("Bushes sway", &bushEnabled)) g_bush.wind.enabled = bushEnabled != 0;
+            api.UiText("Matched by name only; the tree size filter never applies.");
+            api.UiSliderFloat("Bush direction (deg)", &g_bush.wind.directionDeg, 0.0f, 360.0f);
+            api.UiSliderFloat("Bush speed (yd/s)", &g_bush.wind.speed, 0.0f, 12.0f);
+            api.UiSliderFloat("Bush amplitude (deg)", &g_bush.wind.amplitudeDeg, 0.0f, 6.0f);
+            api.UiSliderFloat("Bush wavelength (yd)", &g_bush.wind.wavelength, 2.0f, 80.0f);
+            api.UiSliderFloat("Bush lean (deg)", &g_bush.wind.leanDeg, 0.0f, 4.0f);
+            api.UiSliderFloat("Bush cross amplitude (deg)", &g_bush.wind.crossAmplitudeDeg, 0.0f, 3.0f);
+            api.UiSliderFloat("Bush cross wavelength (yd)", &g_bush.wind.crossWavelength, 2.0f, 40.0f);
+            api.UiSliderFloat("Bush cross angle (deg)", &g_bush.wind.crossAngleDeg, 0.0f, 180.0f);
+            api.UiSliderFloat("Bush variance", &g_bush.wind.variance, 0.0f, 1.0f);
+            api.UiSliderFloat("Bush gust", &g_bush.wind.gust, 0.0f, 1.0f);
+            api.UiSliderFloat("Bush distance fade", &g_bush.wind.distanceFade, 0.0f, 0.05f);
+            int bushDoodads = g_bush.doodadsOnly ? 1 : 0;
+            if (api.UiCheckbox("Bush: placed doodads only", &bushDoodads)) g_bush.doodadsOnly = bushDoodads != 0;
+            int bushDead = g_bush.excludeDead ? 1 : 0;
+            if (api.UiCheckbox("Bush: skip dead / bare", &bushDead)) g_bush.excludeDead = bushDead != 0;
+            api.UiSliderFloat("Bush max distance (yd)", &g_bush.maxDistance, 0.0f, 500.0f);
         }
 
         api.UiSeparator();

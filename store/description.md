@@ -4,5 +4,9 @@ Trees in the stock 3.3.5a client are rigid: they never move, no matter how hard 
 stay planted while the canopy leans downwind and drifts back, a travelling breeze visibly crosses a
 forest, and each tree sways with its own phase and strength so nothing moves in lockstep.
 
+Bushes sway too, and as their own row: matched by name and exempt from the tree size filter, with
+their own wind settings so low foliage can flutter faster and harder than the trees.
+
 Purely visual, with no second draw pass and no measurable performance cost. Wind direction, strength,
-speed, gustiness and which models count as trees are all tunable from the in-game overlay panel.
+speed, gustiness and which models count as trees or bushes are all tunable from the in-game overlay
+panel.

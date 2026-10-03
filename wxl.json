@@ -3,7 +3,7 @@
 
   "extension": {
     "id": "wxl-treewind",
-    "version": "0.3.0",
+    "version": "0.4.0",
     "abi": "1.1",
     "entry": "wxl-treewind.dll",
     "assets": ["wxl-treewind.ini"],
@@ -23,7 +23,7 @@
 
   "listing": {
     "title": "Tree Wind",
-    "tagline": "Makes the client's trees sway gently in the wind.",
+    "tagline": "Makes the client's trees and bushes sway gently in the wind.",
     "description": "store/description.md",
     "gallery": [],
     "categories": ["rendering"],

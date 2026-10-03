@@ -3,6 +3,8 @@
 // live world (placement) matrix about its own base by a small oscillating angle, so the trunk stays
 // planted and the canopy drifts with the wind. Whole-tree rigid tilt, not per-branch movement -- the
 // same "slightly moves" remit as the grass, at a fraction of a degree so nothing reads as unnatural.
+// Bushes (bush/shrub/...) sway the same way but as a separate row: matched by name only, exempt from
+// the tree size filter, and with their own wind values.
 // Copyright (C) 2026 WarcraftXL
 //
 // This program is free software: you can redistribute it and/or modify
@@ -55,10 +57,39 @@ namespace wxl::features::treewind
         float maxDistance   = 0.0f;  // ignore trees farther than this, yards (0 = unlimited)
     };
 
+    /// Bush row: the low, wide placed models the tree row is built to reject. Bushes are matched by
+    /// name only -- they never pass through the tree tall-thin or max-height gates -- and carry their
+    /// own wind so they can sway harder and faster than trees without loosening the tree filter.
+
+    /// Sway defaults for bushes: shorter, quicker and a bit stronger than the trees, so low foliage
+    /// flutters rather than leaning like a trunk. Shares the wind field shape with WindSettings.
+    inline WindSettings BushWindDefaults()
+    {
+        WindSettings w;
+        w.speed             = 4.0f;   // quicker flutter
+        w.amplitudeDeg      = 1.20f;  // more than a tree's crown
+        w.wavelength        = 9.0f;   // smaller, local waves
+        w.crossAmplitudeDeg = 0.50f;
+        w.crossWavelength   = 5.0f;
+        w.leanDeg           = 0.40f;
+        w.variance          = 0.60f;
+        w.gust              = 0.40f;
+        return w;
+    }
+
+    struct BushSettings
+    {
+        WindSettings wind = BushWindDefaults(); // the bush's own sway row, independent of the trees'
+        bool  doodadsOnly = true;   // only map-placed static doodads (never units or spell FX)
+        bool  excludeDead = true;   // reject dead/bare/burnt bushes even if a bush word matches
+        float maxDistance = 0.0f;   // ignore bushes farther than this, yards (0 = unlimited)
+    };
+
     /// The single global settings rows, read and written on the game thread only (no synchronization
     /// needed). Valid whether or not the detour installed.
     WindSettings&   Wind();
     FilterSettings& Filter();
+    BushSettings&   Bush();
 
     /// True once the bone-palette detour installed (so tuning actually reaches the trees).
     bool Installed();

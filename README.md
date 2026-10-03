@@ -31,12 +31,19 @@ by default) can be enabled as a second required gate, and an optional maximum he
 trees rigid. Every test, and every wind knob, is exposed on the in-game overlay panel under **Tree
 Wind**.
 
+Bushes (bush/shrub/fern/hedge/...) are handled as a separate row. They are short and wide, so they
+would fail the tree size gate by design; instead they are matched by name only and never pass through
+the tall-thin or maximum-height filter. They carry their own wind settings, so low foliage can flutter
+faster and harder than the trees without loosening the tree filter. Bushes have their own **Bushes**
+panel and `[Bush]` section.
+
 ## Tuning
 
 The wind row covers direction, speed, amplitude, wavelength, a second cross-swell, a constant
 downwind lean, per-tree variance, gust depth and distance fade. The filter row controls what counts as
 a tree (dead/bare exclusion, path keywords / tall-and-narrow bounds, minimum height and aspect,
-maximum height and distance).
+maximum height and distance). The bush row mirrors the wind knobs with its own values plus
+placed-doodads-only, dead/bare exclusion and maximum distance; it has no size gate.
 
 Every knob is also in `wxl-treewind.ini` next to the DLL, so the sway can be retuned from a text
 editor without the overlay. The file is read live: save a change and the module picks it up within
@@ -52,3 +59,5 @@ the first load.
   models** to also require tree-like bounds, or keep it off if a real tree is missed.
 - **Max height** (world yards, default 200, 0 = unlimited) skips trees taller than the value, so giant
   world-tree models keep their stock pose instead of leaning their canopy across the zone.
+- Bushes are exempt from the tree size gate on purpose. Their wind and filter knobs live in the
+  `[Bush]` section and the **Bushes** panel, independent of the tree values.
