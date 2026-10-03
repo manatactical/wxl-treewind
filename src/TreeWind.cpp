@@ -56,13 +56,23 @@ namespace wxl::features::treewind
         // The live placement of a static doodad is never rewritten by the engine, so the pristine
         // matrix only has to be captured once per instance. Keeping it here lets each frame rebuild
         // the sway from the untitled base instead of accumulating rotation frame after frame.
+        //
+        // The table is fixed-size while instances churn as chunks stream in and out, so each entry
+        // also carries the tick it was last touched. Without that, retired instances' entries were
+        // never reclaimed: once the table filled, no newly streamed tree could obtain a base and the
+        // sway silently died off (the "fewer trees move the longer the session runs" decay).
         struct BaseEntry
         {
             void*    instance = nullptr;
             uint32_t model    = 0;
+            DWORD    stamp    = 0; // GetTickCount of the last touch; drives stale-entry eviction
             float    base[12] = {}; // the top three rows of the placement (row 3 is the translation)
         };
-        constexpr size_t kCacheSize = 8192; // power of two; the probe wraps with a mask
+        constexpr size_t kCacheSize  = 8192; // power of two; the probe wraps with a mask
+        constexpr size_t kProbeLimit = 32;   // entries examined per lookup before giving up
+        // An entry untouched for longer than this belongs to an instance the engine has retired. A
+        // tree still in the scene has its palette built every frame, so its entry stays fresh.
+        constexpr DWORD  kStaleMs    = 2000;
         BaseEntry        g_cache[kCacheSize];
         CRITICAL_SECTION g_cacheLock;
         bool             g_cacheReady = false;
@@ -80,28 +90,40 @@ namespace wxl::features::treewind
         }
 
         // The cached pristine placement for an instance, inserting it on first sight. Returns false
-        // when the table is too contended to place a new entry (the caller then leaves the tree stock).
+        // only when every slot the probe reaches is freshly used (a live, saturated neighbourhood);
+        // the caller then leaves the tree stock for this frame.
         bool BaseFromCache(void* instance, uint32_t model, float out[12])
         {
+            float* const cur = PlacementOf(instance);
             if (!g_cacheReady)
             {
-                std::memcpy(out, PlacementOf(instance), sizeof(float) * 12);
+                std::memcpy(out, cur, sizeof(float) * 12);
                 return true;
             }
 
+            const DWORD now = GetTickCount();
             bool found = false;
             EnterCriticalSection(&g_cacheLock);
             const size_t start = CacheIndex(instance);
-            for (size_t probe = 0; probe < 32; ++probe)
+            size_t victim      = kCacheSize; // stalest resident of this probe window
+            DWORD  victimStamp = 0;
+            for (size_t probe = 0; probe < kProbeLimit; ++probe)
             {
-                BaseEntry& e = g_cache[(start + probe) & (kCacheSize - 1)];
+                const size_t idx = (start + probe) & (kCacheSize - 1);
+                BaseEntry& e = g_cache[idx];
                 if (e.instance == instance)
                 {
-                    if (e.model != model) // a reused slot with new content: re-seed the base
+                    // A reused slot with new content: re-seed from the live placement. The model
+                    // pointer catches a model swap and the translation catches a new tree at the
+                    // same address -- the sway never touches the translation row, so a match there
+                    // means this really is the same, untouched placement.
+                    if (e.model != model ||
+                        cur[12] != e.base[12] || cur[13] != e.base[13] || cur[14] != e.base[14])
                     {
                         e.model = model;
-                        std::memcpy(e.base, PlacementOf(instance), sizeof(e.base));
+                        std::memcpy(e.base, cur, sizeof(e.base));
                     }
+                    e.stamp = now;
                     std::memcpy(out, e.base, sizeof(e.base));
                     found = true;
                     break;
@@ -110,11 +132,30 @@ namespace wxl::features::treewind
                 {
                     e.instance = instance;
                     e.model    = model;
-                    std::memcpy(e.base, PlacementOf(instance), sizeof(e.base));
+                    e.stamp    = now;
+                    std::memcpy(e.base, cur, sizeof(e.base));
                     std::memcpy(out, e.base, sizeof(e.base));
                     found = true;
                     break;
                 }
+                if (victim == kCacheSize || e.stamp < victimStamp)
+                {
+                    victimStamp = e.stamp;
+                    victim      = idx;
+                }
+            }
+            // Saturated probe window: take over the least-recently-seen slot, but only when it is old
+            // enough to be a retired instance. A live tree is touched every frame, so its slot is
+            // never eligible and its pristine base is never lost.
+            if (!found && victim < kCacheSize && now - victimStamp > kStaleMs)
+            {
+                BaseEntry& e = g_cache[victim];
+                e.instance = instance;
+                e.model    = model;
+                e.stamp    = now;
+                std::memcpy(e.base, cur, sizeof(e.base));
+                std::memcpy(out, e.base, sizeof(e.base));
+                found = true;
             }
             LeaveCriticalSection(&g_cacheLock);
             return found;
